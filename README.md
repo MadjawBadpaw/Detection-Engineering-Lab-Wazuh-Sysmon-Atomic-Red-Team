@@ -2,7 +2,6 @@
 
 # Windows Detection Engineering with Wazuh & Atomic Red Team
 
-**Attacker simulation → endpoint telemetry → default detection → false-positive analysis → custom Wazuh rules**
 
 </div>
 
@@ -25,7 +24,7 @@ A home-lab project covering the full path from attacker simulation to a tuned de
 
 ## Scope
 
-The goal was to practice detection engineering, not just SIEM deployment — taking a default rule match and improving it based on an actual false-positive analysis, rather than treating an alert firing as the end state.
+The goal was to practice detection engineering, taking a default rule match and improving it based on an actual false-positive analysis, rather than treating an alert firing as the end state.
 
 | # | Task |
 |---|---|
