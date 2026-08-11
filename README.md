@@ -4,12 +4,6 @@
 
 **Attacker simulation → endpoint telemetry → default detection → false-positive analysis → custom Wazuh rules**
 
-![Wazuh](https://img.shields.io/badge/SIEM-Wazuh-005571?style=flat-square)
-![Atomic Red Team](https://img.shields.io/badge/Simulation-Atomic%20Red%20Team-red?style=flat-square)
-![Sysmon](https://img.shields.io/badge/Telemetry-Sysmon-0078D6?style=flat-square)
-![MITRE ATT&CK](https://img.shields.io/badge/Technique-T1059.001-orange?style=flat-square)
-![Status](https://img.shields.io/badge/Status-Lab%20Complete-brightgreen?style=flat-square)
-
 </div>
 
 A home-lab project covering the full path from attacker simulation to a tuned detection: running an Atomic Red Team technique against a Windows host, tracing it through endpoint telemetry, evaluating Wazuh's default detection, and writing custom rules to reduce false positives and improve alert fidelity.
@@ -123,43 +117,4 @@ The atomic test's own harness leaves behind an artifact (`PScriptPolicyTest`) as
 <tr><td colspan="2">Fires when <code>powershell.exe</code> is executed with a common encoded-command flag (<code>-enc</code>, <code>-e</code>, <code>-ec</code>, <code>-EncodedCommand</code>). Independent of parent process. Severity level 10, mapped to <code>T1059.001</code>.</td></tr>
 </table>
 
-Full XML and reasoning for both rules are in [`wazuh/rules/`](wazuh/rules/).
 
-<br>
-
-## Limitations
-
-> [!NOTE]
-> Being upfront about scope, because it matters.
-
-- This is one technique, tested once, in an isolated lab — not a validated detection for production.
-- "False positives suppressed" means *this specific known-benign artifact*, not false positives in general.
-- The custom rules haven't been tested against obfuscation variants, different encodings, or evasion attempts. That's a next step, not something this project covers yet.
-
-<br>
-
-## Repo Layout
-
-```
-docs/            step-by-step write-up (setup → test → telemetry → detection → FP analysis → custom rules)
-atomic-tests/    which atomic test was run and its output
-wazuh/rules/     the custom rule XML and notes on why each rule looks the way it does
-telemetry/       raw notes on what Sysmon / PowerShell / Security logs showed
-screenshots/     evidence, organized in the order the project actually happened
-findings/        the reasoning tying it all together
-```
-
-Screenshots are numbered by phase (`01-atomic-test`, `02-event-viewer`, `03-wazuh-default`, `04-false-positives`, `05-custom-rules`, `06-final-detection`) so the chain can be followed visually without reading anything else.
-
-<br>
-
-## Next Steps
-
-- Run more `T1059` sub-techniques — encoded command is just one variant — and check whether rule `100210` still holds up
-- Test against obfuscation tricks (character substitution, split strings) to find where the current rule breaks
-- Move from one atomic test to a small batch across a couple of tactics, so the false-positive tuning has more than one data point behind it
-- Determine whether the same `PScriptPolicyTest`-style suppression is needed for other Atomic Red Team tests, since it's a harness artifact rather than a one-off
-
----
-
-<sub>Built as a personal lab project to get hands-on experience with detection engineering rather than basic SIEM deployment. Feedback and corrections are welcome.</sub>
