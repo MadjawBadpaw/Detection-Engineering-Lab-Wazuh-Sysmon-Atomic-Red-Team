@@ -2,6 +2,13 @@
 
 # Windows Detection Engineering with Wazuh & Atomic Red Team
 
+**Attacker simulation → endpoint telemetry → default detection → false-positive analysis → custom Wazuh rules**
+
+![Wazuh](https://img.shields.io/badge/SIEM-Wazuh-005571?style=flat-square)
+![Atomic Red Team](https://img.shields.io/badge/Simulation-Atomic%20Red%20Team-red?style=flat-square)
+![Sysmon](https://img.shields.io/badge/Telemetry-Sysmon-0078D6?style=flat-square)
+![MITRE ATT&CK](https://img.shields.io/badge/Technique-T1059.001-orange?style=flat-square)
+![Status](https://img.shields.io/badge/Status-Lab%20Complete-brightgreen?style=flat-square)
 
 </div>
 
@@ -13,6 +20,7 @@ A home-lab project covering the full path from attacker simulation to a tuned de
 
 - [Scope](#scope)
 - [Lab Setup](#lab-setup)
+- [Installation & Configuration](#installation--configuration)
 - [The Technique](#the-technique)
 - [Walkthrough](#walkthrough)
 - [Custom Rules](#custom-rules)
@@ -63,7 +71,131 @@ flowchart TD
     G --> H[Wazuh Dashboard]
 ```
 
-> No production data, no real credentials in this repo. Network details may be present in screenshots but that's dynamic.
+> No production data, no real credentials in this repo. Network details are scrubbed where they don't matter to the write-up.
+
+<br>
+
+## Installation & Configuration
+
+This section documents how the lab was actually built, so it can be reproduced.
+
+### VMware Networking
+
+Both the Windows 11 endpoint and the Wazuh server VM are set to **Bridged** networking, not NAT.
+
+| Mode | Why not |
+|---|---|
+| NAT | Each VM gets an address behind VMware's own virtual router. The agent can't reach the manager on its actual LAN IP without extra port-forwarding rules, and the server can't be reached from anything outside the host. |
+| Host-only | Isolates the VMs to a private virtual switch — the endpoint and server would talk to each other fine, but this adds a layer that isn't necessary for a two-VM lab. |
+| **Bridged** | Both VMs get their own address on the physical LAN, exactly as if they were separate machines on the network. The agent connects to the manager's real IP with no extra routing to configure. |
+
+Set per-VM in VMware: **VM → Settings → Network Adapter → Bridged**. Confirm both VMs can reach each other (`ping <manager-ip>` from the Windows host) before installing the agent.
+
+### Wazuh Manager (Ubuntu Server)
+
+Installed using the official all-in-one install script, which sets up the Wazuh manager, indexer, and dashboard on a single node — sufficient for a lab of this size.
+
+```bash
+curl -sO https://packages.wazuh.com/4.x/wazuh-install.sh
+sudo bash wazuh-install.sh -a
+```
+
+The script prints the dashboard admin credentials at the end of the run — save those before they scroll off. Confirm the manager is running:
+
+```bash
+sudo systemctl status wazuh-manager
+```
+
+Dashboard is reachable at `https://<server-ip>` once the install finishes.
+
+### Wazuh Agent (Windows 11)
+
+Downloaded and installed the MSI package, pointed at the manager's bridged IP at install time:
+
+```powershell
+Invoke-WebRequest -Uri https://packages.wazuh.com/4.x/windows/wazuh-agent-4.x.x-1.msi -OutFile $env:TEMP\wazuh-agent.msi
+
+msiexec.exe /i $env:TEMP\wazuh-agent.msi /q WAZUH_MANAGER='<manager-ip>' WAZUH_AGENT_NAME='win11-agent'
+```
+
+Start the service and confirm it's running:
+
+```powershell
+NET START WazuhSvc
+Get-Service WazuhSvc
+```
+
+The agent should show up as **Active** under **Agents** in the Wazuh dashboard within a minute or two. If it doesn't, it's almost always the bridged network / firewall, not the install.
+
+### Sysmon
+
+Installed separately from Wazuh, using a standard SwiftOnSecurity-style config for a reasonable balance of coverage vs. log volume:
+
+```powershell
+Sysmon64.exe -accepteula -i sysmonconfig.xml
+```
+
+### Editing `ossec.conf` — Agent Side
+
+Location on the Windows endpoint:
+
+```
+C:\Program Files (x86)\ossec-agent\ossec.conf
+```
+
+This is where the agent is told *what to forward*. By default it ships basic Windows log collection, but Sysmon isn't included automatically — it has to be added as a `<localfile>` block:
+
+```xml
+<localfile>
+  <location>Microsoft-Windows-Sysmon/Operational</location>
+  <log_format>eventchannel</log_format>
+</localfile>
+```
+
+Also confirmed PowerShell Operational logging was present:
+
+```xml
+<localfile>
+  <location>Microsoft-Windows-PowerShell/Operational</location>
+  <log_format>eventchannel</log_format>
+</localfile>
+```
+
+After editing, the agent service has to be restarted for it to take effect:
+
+```powershell
+Restart-Service WazuhSvc
+```
+
+### Editing `local_rules.xml` — Manager Side
+
+Custom rules don't go in the main `ossec.conf` — they live in their own file so they survive Wazuh updates:
+
+```
+/var/ossec/etc/rules/local_rules.xml
+```
+
+Both rule `100201` (false-positive suppression) and rule `100210` (encoded PowerShell detection) were added here. Custom rule IDs have to stay in the `100000–119999` range, which is reserved for local/custom rules and won't collide with Wazuh's built-in rule set.
+
+Before restarting anything, the rule syntax was validated using Wazuh's built-in log tester so a typo doesn't silently break the manager:
+
+```bash
+sudo /var/ossec/bin/wazuh-logtest
+```
+
+Once the rule logic checked out, the manager was restarted to load it:
+
+```bash
+sudo systemctl restart wazuh-manager
+```
+
+Manager-side config (log sources, integrations, global settings — as opposed to detection logic) lives separately at:
+
+```
+/var/ossec/etc/ossec.conf
+```
+
+That file wasn't touched for this project — everything needed lived in `local_rules.xml` plus the agent's `ossec.conf`.
 
 <br>
 
@@ -74,7 +206,7 @@ flowchart TD
 | **MITRE ATT&CK** | `T1059.001` — Command and Scripting Interpreter: PowerShell |
 | **Atomic Test** | `T1059.001-15` — PowerShell executed via `-EncodedCommand` |
 
-This technique was chosen because it's simple enough to reason about end-to-end but still reflects behavior real attackers use routinely — Base64-encoded PowerShell to dodge basic string matching and logging. The "bad" signal (an encoded command) and the "noise" (test-harness artifacts) are easy to tell apart once the telemetry is actually inspected.
+This technique was chosen because it's simple enough to reason about end-to-end but still reflects behavior real attackers use routinely — Base64-encoded PowerShell to dodge basic string matching and logging. The "bad" signal (an encoded command) and the "noise" (test-harness artifacts) are easy to tell apart once the telemetry is actually inspected instead of trusting the alert name at face value.
 
 <br>
 
