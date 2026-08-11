@@ -63,7 +63,7 @@ flowchart TD
     G --> H[Wazuh Dashboard]
 ```
 
-> No production data, no real credentials in this repo. Network details are scrubbed where they don't matter to the write-up.
+> No production data, no real credentials in this repo. Network details may be present in screenshots but that's dynamic.
 
 <br>
 
@@ -74,7 +74,7 @@ flowchart TD
 | **MITRE ATT&CK** | `T1059.001` — Command and Scripting Interpreter: PowerShell |
 | **Atomic Test** | `T1059.001-15` — PowerShell executed via `-EncodedCommand` |
 
-This technique was chosen because it's simple enough to reason about end-to-end but still reflects behavior real attackers use routinely — Base64-encoded PowerShell to dodge basic string matching and logging. The "bad" signal (an encoded command) and the "noise" (test-harness artifacts) are easy to tell apart once the telemetry is actually inspected instead of trusting the alert name at face value.
+This technique was chosen because it's simple enough to reason about end-to-end but still reflects behavior real attackers use routinely — Base64-encoded PowerShell to dodge basic string matching and logging. The "bad" signal (an encoded command) and the "noise" (test-harness artifacts) are easy to tell apart once the telemetry is actually inspected.
 
 <br>
 
